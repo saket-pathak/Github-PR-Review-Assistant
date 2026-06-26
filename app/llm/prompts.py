@@ -27,6 +27,80 @@ CRITICAL RULES:
 4. Be polite, clear, and actionable in your suggestions.
 """
 
+PYTHON_RULES = """
+PYTHON-SPECIFIC RULES (STRICT):
+- Check for PEP 8 compliance (naming, formatting structure).
+- Watch out for common logical bugs like mutable default arguments (e.g., def fn(arg=[])).
+- Avoid bare except clauses (always catch specific exceptions or use `except Exception:`).
+- Ensure proper use of docstrings, type annotations, and clean code principles.
+- Check for performance issues (e.g., unnecessary loops, slow string concatenations).
+- Look for security issues (e.g., use of eval, unsafe deserialization, hardcoded credentials).
+"""
+
+CONFIG_RULES = """
+CONFIG-SPECIFIC RULES (LENIENT):
+- Focus on correctness, syntax, and structural errors.
+- Check for security risks (e.g., exposed API keys, passwords, or private configuration details).
+- Avoid style nitpicking or minor formatting preferences unless it leads to parsing issues.
+"""
+
+WEB_RULES = """
+JS/TS/HTML/CSS-SPECIFIC RULES:
+- Ensure correct asynchronous code handling (e.g., unhandled promises, missing awaits).
+- Watch out for potential null/undefined reference errors (recommend optional chaining `?.`).
+- Look for left-over debug statements like console.log or debugger.
+- Ensure semantic HTML tags are used correctly for accessibility.
+"""
+
+SHELL_DOCKER_RULES = """
+SHELL/DOCKER-SPECIFIC RULES:
+- For Dockerfiles, verify image size optimizations (multi-stage builds, clean package caches) and security (avoid running as root, pin base images).
+- For shell scripts, ensure variables are quoted to avoid splitting and wildcard expansion.
+"""
+
+def get_language_instructions(filenames: list[str]) -> str:
+    """
+    Returns language-specific instructions depending on the file types modified in the PR.
+    """
+    rules = []
+    has_python = False
+    has_config = False
+    has_web = False
+    has_shell = False
+    
+    for filename in filenames:
+        name_lower = filename.lower()
+        if name_lower.endswith(".py"):
+            has_python = True
+        elif any(name_lower.endswith(ext) for ext in [".json", ".yaml", ".yml", ".toml", ".ini", ".xml"]):
+            has_config = True
+        elif any(name_lower.endswith(ext) for ext in [".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".scss"]):
+            has_web = True
+        elif name_lower.endswith(".sh") or "dockerfile" in name_lower:
+            has_shell = True
+            
+    if has_python:
+        rules.append(PYTHON_RULES.strip())
+    if has_config:
+        rules.append(CONFIG_RULES.strip())
+    if has_web:
+        rules.append(WEB_RULES.strip())
+    if has_shell:
+        rules.append(SHELL_DOCKER_RULES.strip())
+        
+    if rules:
+        return "\n\nADDITIONAL LANGUAGE-SPECIFIC GUIDELINES:\n" + "\n\n".join(rules)
+    return ""
+
+def get_system_instruction(filenames: list[str]) -> str:
+    """
+    Constructs the system instruction dynamically, combining core instructions with language-specific rules.
+    """
+    lang_rules = get_language_instructions(filenames)
+    if lang_rules:
+        return SYSTEM_INSTRUCTION + lang_rules
+    return SYSTEM_INSTRUCTION
+
 def format_review_prompt(parsed_files: list) -> str:
     """
     Formats the diff changes into a structured prompt for the LLM, 
@@ -46,3 +120,4 @@ def format_review_prompt(parsed_files: list) -> str:
     
     prompt += "Provide the review comments using the exact JSON format specified in system instructions."
     return prompt
+

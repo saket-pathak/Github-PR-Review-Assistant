@@ -1,7 +1,7 @@
 import json
 from typing import List, Dict, Any
 from app.llm.client import LLMClient
-from app.llm.prompts import SYSTEM_INSTRUCTION, format_review_prompt
+from app.llm.prompts import get_system_instruction, format_review_prompt
 
 class LLMReviewer:
     def __init__(self, provider: str, api_key: str):
@@ -30,9 +30,11 @@ class LLMReviewer:
             }
 
         prompt = format_review_prompt(reviewable_files)
+        filenames = [f.get("filename", "") for f in reviewable_files]
+        system_instruction = get_system_instruction(filenames)
         raw_response = await self.client.get_review(
             prompt=prompt,
-            system_instruction=SYSTEM_INSTRUCTION
+            system_instruction=system_instruction
         )
         
         # Sanitize LLM response (in case of markdown code block encapsulation)
@@ -57,3 +59,4 @@ class LLMReviewer:
                 "comments": [],
                 "raw_response": raw_response
             }
+

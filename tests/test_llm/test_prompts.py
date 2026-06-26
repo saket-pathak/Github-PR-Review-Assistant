@@ -1,4 +1,9 @@
-from app.llm.prompts import format_review_prompt, SYSTEM_INSTRUCTION
+from app.llm.prompts import (
+    format_review_prompt,
+    SYSTEM_INSTRUCTION,
+    get_language_instructions,
+    get_system_instruction
+)
 
 def test_system_instruction_contains_key_elements():
     # Verify key requirements are in the system instruction text
@@ -39,3 +44,30 @@ def test_format_review_prompt_no_changes():
     assert "File: app/utils.py" in prompt
     assert "Status: added" in prompt
     assert "(No lines added or modified in this file)" in prompt
+
+def test_get_language_instructions_python():
+    instructions = get_language_instructions(["app/main.py", "app/utils.py"])
+    assert "PYTHON-SPECIFIC RULES" in instructions
+    assert "CONFIG-SPECIFIC RULES" not in instructions
+
+def test_get_language_instructions_config():
+    instructions = get_language_instructions(["docker-compose.yml", "package.json"])
+    assert "CONFIG-SPECIFIC RULES" in instructions
+    assert "PYTHON-SPECIFIC RULES" not in instructions
+
+def test_get_language_instructions_mixed():
+    instructions = get_language_instructions(["app/main.py", "docker-compose.yml"])
+    assert "PYTHON-SPECIFIC RULES" in instructions
+    assert "CONFIG-SPECIFIC RULES" in instructions
+
+def test_get_language_instructions_other():
+    instructions = get_language_instructions(["README.md", "LICENSE"])
+    assert instructions == ""
+
+def test_get_system_instruction_python():
+    sys_inst = get_system_instruction(["app/main.py"])
+    assert "PYTHON-SPECIFIC RULES" in sys_inst
+    
+    sys_inst_no_files = get_system_instruction([])
+    assert sys_inst_no_files == SYSTEM_INSTRUCTION
+
