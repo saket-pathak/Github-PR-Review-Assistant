@@ -16,7 +16,9 @@ async def test_run_review_missing_github_token(mock_settings):
 @patch("app.services.review_service.GitHubClient")
 @patch("app.services.review_service.LLMReviewer")
 @patch("app.services.review_service.CommentService")
+@patch("app.services.review_service.ReviewCache")
 async def test_run_review_success_with_comments(
+    mock_cache_cls,
     mock_comment_service,
     mock_llm_reviewer_cls,
     mock_github_client_cls,
@@ -26,10 +28,17 @@ async def test_run_review_success_with_comments(
     mock_settings.github_token = "fake-github-token"
     mock_settings.llm_provider = "mock"
     
+    # Mock ReviewCache
+    mock_cache = MagicMock()
+    mock_cache.get_comments.return_value = None
+    mock_cache_cls.return_value = mock_cache
+
     # Mock GitHubClient
     mock_gh_client = MagicMock()
     mock_gh_client.get_pull_request = AsyncMock(return_value={"head": {"sha": "abcdef12345"}})
-    mock_gh_client.get_pull_request_files = AsyncMock(return_value=[{"filename": "a.py"}])
+    mock_gh_client.get_pull_request_files = AsyncMock(return_value=[
+        {"filename": "a.py", "patch": "@@ -1 +1,2 @@\n+x = 1\n"}
+    ])
     mock_gh_client.post_review = AsyncMock()
     mock_github_client_cls.return_value = mock_gh_client
     
@@ -71,7 +80,9 @@ async def test_run_review_success_with_comments(
 @patch("app.services.review_service.GitHubClient")
 @patch("app.services.review_service.LLMReviewer")
 @patch("app.services.review_service.CommentService")
+@patch("app.services.review_service.ReviewCache")
 async def test_run_review_success_no_comments(
+    mock_cache_cls,
     mock_comment_service,
     mock_llm_reviewer_cls,
     mock_github_client_cls,
@@ -82,10 +93,17 @@ async def test_run_review_success_no_comments(
     mock_settings.llm_provider = "openai"
     mock_settings.openai_api_key = "fake-openai-key"
     
+    # Mock ReviewCache
+    mock_cache = MagicMock()
+    mock_cache.get_comments.return_value = None
+    mock_cache_cls.return_value = mock_cache
+
     # Mock GitHubClient
     mock_gh_client = MagicMock()
     mock_gh_client.get_pull_request = AsyncMock(return_value={"head": {"sha": "abcdef12345"}})
-    mock_gh_client.get_pull_request_files = AsyncMock(return_value=[{"filename": "a.py"}])
+    mock_gh_client.get_pull_request_files = AsyncMock(return_value=[
+        {"filename": "a.py", "patch": "@@ -1 +1,2 @@\n+x = 1\n"}
+    ])
     mock_gh_client.post_review = AsyncMock()
     mock_github_client_cls.return_value = mock_gh_client
     
@@ -122,7 +140,9 @@ async def test_run_review_success_no_comments(
 @patch("app.services.review_service.GitHubClient")
 @patch("app.services.review_service.LLMReviewer")
 @patch("app.services.review_service.CommentService")
+@patch("app.services.review_service.ReviewCache")
 async def test_run_review_no_post_to_github(
+    mock_cache_cls,
     mock_comment_service,
     mock_llm_reviewer_cls,
     mock_github_client_cls,
@@ -133,10 +153,17 @@ async def test_run_review_no_post_to_github(
     mock_settings.llm_provider = "anthropic"
     mock_settings.anthropic_api_key = "fake-anthropic-key"
     
+    # Mock ReviewCache
+    mock_cache = MagicMock()
+    mock_cache.get_comments.return_value = None
+    mock_cache_cls.return_value = mock_cache
+
     # Mock GitHubClient
     mock_gh_client = MagicMock()
     mock_gh_client.get_pull_request = AsyncMock(return_value={"head": {"sha": "abcdef12345"}})
-    mock_gh_client.get_pull_request_files = AsyncMock(return_value=[{"filename": "a.py"}])
+    mock_gh_client.get_pull_request_files = AsyncMock(return_value=[
+        {"filename": "a.py", "patch": "@@ -1 +1,2 @@\n+x = 1\n"}
+    ])
     mock_gh_client.post_review = AsyncMock()
     mock_github_client_cls.return_value = mock_gh_client
     
@@ -162,3 +189,47 @@ async def test_run_review_no_post_to_github(
     
     # Verify post_review was NOT called
     mock_gh_client.post_review.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("app.services.review_service.settings")
+@patch("app.services.review_service.GitHubClient")
+@patch("app.services.review_service.LLMReviewer")
+@patch("app.services.review_service.ReviewCache")
+async def test_run_review_cache_hit(
+    mock_cache_cls,
+    mock_llm_reviewer_cls,
+    mock_github_client_cls,
+    mock_settings
+):
+    mock_settings.github_token = "fake-github-token"
+    
+    # Mock GitHubClient
+    mock_gh_client = MagicMock()
+    mock_gh_client.get_pull_request = AsyncMock(return_value={"head": {"sha": "abcdef12345"}})
+    mock_gh_client.get_pull_request_files = AsyncMock(return_value=[
+        {"filename": "a.py", "patch": "@@ -1 +1 @@\n-x\n+y\n"}
+    ])
+    mock_gh_client.post_review = AsyncMock()
+    mock_github_client_cls.return_value = mock_gh_client
+    
+    # Mock ReviewCache to return cached comments
+    mock_cache = MagicMock()
+    cached_comments = [{"path": "a.py", "line": 1, "side": "RIGHT", "body": "fix styling"}]
+    mock_cache.get_comments.return_value = cached_comments
+    mock_cache_cls.return_value = mock_cache
+    
+    # Mock LLMReviewer (should NOT be called since file is cached)
+    mock_reviewer = MagicMock()
+    mock_reviewer.review_diff = AsyncMock()
+    mock_llm_reviewer_cls.return_value = mock_reviewer
+    
+    result = await run_review("owner/repo", 42, post_to_github=True)
+    
+    assert result["status"] == "success"
+    assert result["comments"] == cached_comments
+    assert "previously reviewed" in result["summary"]
+    
+    mock_reviewer.review_diff.assert_not_called()
+    mock_gh_client.post_review.assert_called_once()
+

@@ -17,3 +17,7 @@ env/
 # IDE files
 .vscode/
 .idea/
+
+# Review cache database
+.review_cache.db
+
