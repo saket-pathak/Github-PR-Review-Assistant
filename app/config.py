@@ -4,6 +4,12 @@ class Settings(BaseSettings):
     github_token: str = ""
     github_webhook_secret: str = ""
     
+    # GitLab configurations
+    gitlab_token: str = ""
+    gitlab_webhook_secret: str = ""
+    gitlab_api_url: str = "https://gitlab.com/api/v4"
+
+    
     # LLM configurations
     llm_provider: str = "anthropic"  # 'anthropic', 'openai', or 'mock'
     anthropic_api_key: str = ""
