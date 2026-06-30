@@ -11,6 +11,18 @@ def test_review_request_validation_success():
     request = ReviewRequest(**payload)
     assert request.repo == "owner/repo"
     assert request.pr_number == 123
+    assert request.platform == "github"
+
+def test_review_request_validation_custom_platform():
+    payload = {
+        "repo": "gitlab-org/gitlab",
+        "pr_number": 42,
+        "platform": "gitlab"
+    }
+    request = ReviewRequest(**payload)
+    assert request.repo == "gitlab-org/gitlab"
+    assert request.pr_number == 42
+    assert request.platform == "gitlab"
 
 def test_review_request_validation_missing_fields():
     # Missing pr_number

@@ -67,8 +67,85 @@ def test_webhook_triggered_success(mock_run_review, mock_parse_payload, mock_ver
     assert response.status_code == 200
     assert response.json() == {
         "status": "triggered",
+        "platform": "github",
         "repo": "owner/repo",
         "pr": 101
     }
     mock_verify_signature.assert_called_once_with(b'{"action":"opened","pull_request":{"number":101}}', "sha256=validsig", "testsecret")
     mock_parse_payload.assert_called_once_with(payload, "pull_request")
+
+
+@patch("app.services.gitlab_review_service.run_gitlab_review", new_callable=AsyncMock)
+def test_review_mr_success(mock_run_gitlab_review):
+    mock_run_gitlab_review.return_value = {
+        "status": "success",
+        "comments_posted": 2,
+        "summary": "This is a great MR!"
+    }
+
+    payload = {"repo": "gitlab-org/gitlab", "pr_number": 42, "platform": "gitlab"}
+    response = client.post("/review", json=payload)
+    
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "pr": 42,
+        "comments_posted": 2,
+        "summary": "This is a great MR!"
+    }
+    mock_run_gitlab_review.assert_called_once_with("gitlab-org/gitlab", 42, post_to_gitlab=True)
+
+
+@patch("app.gitlab.webhook.verify_gitlab_token")
+@patch("app.gitlab.webhook.parse_gitlab_webhook")
+@patch("app.services.gitlab_review_service.run_gitlab_review", new_callable=AsyncMock)
+def test_gitlab_webhook_triggered_success(mock_run_gitlab_review, mock_parse_gitlab_webhook, mock_verify_gitlab_token):
+    settings.gitlab_webhook_secret = "gitlabsecret"
+    mock_verify_gitlab_token.return_value = True
+    mock_parse_gitlab_webhook.return_value = ("gitlab-org/gitlab", 42)
+
+    headers = {
+        "X-Gitlab-Event": "Merge Request Hook",
+        "X-Gitlab-Token": "gitlabsecret"
+    }
+    payload = {"object_attributes": {"action": "open", "iid": 42}}
+    response = client.post("/webhook", json=payload, headers=headers)
+    
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "triggered",
+        "platform": "gitlab",
+        "repo": "gitlab-org/gitlab",
+        "pr": 42
+    }
+    mock_verify_gitlab_token.assert_called_once_with("gitlabsecret", "gitlabsecret")
+    mock_parse_gitlab_webhook.assert_called_once_with(payload, "Merge Request Hook")
+
+
+@patch("app.gitlab.webhook.verify_gitlab_token")
+def test_gitlab_webhook_signature_failure(mock_verify_gitlab_token):
+    settings.gitlab_webhook_secret = "gitlabsecret"
+    mock_verify_gitlab_token.return_value = False
+
+    headers = {
+        "X-Gitlab-Event": "Merge Request Hook",
+        "X-Gitlab-Token": "wrongsecret"
+    }
+    response = client.post("/webhook", json={}, headers=headers)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid GitLab webhook token"
+
+
+@patch("app.gitlab.webhook.verify_gitlab_token")
+@patch("app.gitlab.webhook.parse_gitlab_webhook")
+def test_gitlab_webhook_ignored_event(mock_parse_gitlab_webhook, mock_verify_gitlab_token):
+    settings.gitlab_webhook_secret = ""
+    mock_verify_gitlab_token.return_value = True
+    mock_parse_gitlab_webhook.return_value = None
+
+    headers = {
+        "X-Gitlab-Event": "Push Hook"
+    }
+    response = client.post("/webhook", json={}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "ignored"
