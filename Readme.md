@@ -29,10 +29,20 @@ github-pr-review-assistant/
 │   │   ├── routes.py                # REST endpoints: /review, /webhook, /health
 │   │   └── schemas.py               # Request/response models (Pydantic)
 │   │
+│   ├── bitbucket/
+│   │   ├── client.py                # Bitbucket API wrapper
+│   │   ├── parser.py                # PR diff parser (Bitbucket Cloud)
+│   │   └── webhook.py               # Webhook signature validation & event handling
+│   │
 │   ├── github/
 │   │   ├── client.py                # GitHub API wrapper
 │   │   ├── parser.py                # PR diff + metadata parser
 │   │   └── webhook.py               # Webhook signature validation & event handling
+│   │
+│   ├── gitlab/
+│   │   ├── client.py                # GitLab API wrapper
+│   │   ├── parser.py                # MR diff + metadata parser
+│   │   └── webhook.py               # Webhook token validation & event handling
 │   │
 │   ├── llm/
 │   │   ├── client.py                # LLM API wrapper (Anthropic / OpenAI)
@@ -40,16 +50,25 @@ github-pr-review-assistant/
 │   │   └── reviewer.py              # Diff → prompt → LLM → structured review
 │   │
 │   └── services/
-│       ├── review_service.py        # End-to-end: fetch → review → comment
-│       └── comment_service.py       # Format & post GitHub review comments
+│       ├── review_service.py        # End-to-end: fetch → review → comment (GitHub)
+│       ├── gitlab_review_service.py # End-to-end: fetch → review → comment (GitLab)
+│       ├── bitbucket_review_service.py # End-to-end: fetch → review → comment (Bitbucket)
+│       ├── comment_service.py       # Format review comments
+│       └── cache_service.py         # SQLite caching layer for reviewed files
 │
 ├── tests/
+│   ├── test_bitbucket/
 │   ├── test_github/
+│   ├── test_gitlab/
 │   ├── test_llm/
-│   └── test_api/
+│   ├── test_api/
+│   ├── test_services/
+│   └── test_scripts/
 │
 ├── scripts/
-│   └── review_pr.py                 # CLI: python scripts/review_pr.py <PR_URL>
+│   ├── review_pr.py                 # CLI: python scripts/review_pr.py <PR_URL>
+│   ├── review_mr.py                 # CLI: python scripts/review_mr.py <MR_URL>
+│   └── review_pr_bitbucket.py       # CLI: python scripts/review_pr_bitbucket.py <PR_URL>
 │
 ├── .env.example
 ├── requirements.txt
@@ -123,8 +142,9 @@ flask run --port 8000
 
 ## 🖥️ CLI Usage
 
-Review any pull request directly from your terminal — no server needed:
+Review any pull request (GitHub) or merge request (GitLab) directly from your terminal — no server needed:
 
+### GitHub PR Review CLI
 ```bash
 python scripts/review_pr.py https://github.com/owner/repo/pull/42
 ```
@@ -133,10 +153,37 @@ The script will:
 1. Fetch the PR diff from GitHub
 2. Send it to the configured LLM
 3. Print a structured review to stdout
-4. (Optional) Post comments back to GitHub if `--post` is passed
-
+4. (Optional) Post comments back to GitHub if `--post` is passed:
 ```bash
 python scripts/review_pr.py https://github.com/owner/repo/pull/42 --post
+```
+
+### GitLab MR Review CLI
+```bash
+python scripts/review_mr.py https://gitlab.com/owner/repo/-/merge_requests/42
+```
+
+The script will:
+1. Fetch the MR diff from GitLab
+2. Send it to the configured LLM
+3. Print a structured review to stdout
+4. (Optional) Post comments back to GitLab if `--post` is passed:
+```bash
+python scripts/review_mr.py https://gitlab.com/owner/repo/-/merge_requests/42 --post
+```
+
+### Bitbucket PR Review CLI
+```bash
+python scripts/review_pr_bitbucket.py https://bitbucket.org/workspace/repo/pull-requests/42
+```
+
+The script will:
+1. Fetch the PR diff from Bitbucket
+2. Send it to the configured LLM
+3. Print a structured review to stdout
+4. (Optional) Post comments back to Bitbucket if `--post` is passed:
+```bash
+python scripts/review_pr_bitbucket.py https://bitbucket.org/workspace/repo/pull-requests/42 --post
 ```
 
 ---
@@ -263,11 +310,12 @@ pytest tests/test_github/ -v
 
 ## 🛣️ Roadmap
 
-- [ ] Support for GitLab and Bitbucket
-- [ ] Per-language review rules (stricter for Python, lenient for config files)
+- [x] Support for GitLab
+- [x] Support for Bitbucket
+- [x] Per-language review rules (stricter for Python, lenient for config files)
 - [ ] Review history dashboard (React frontend)
 - [ ] GitHub App distribution (no PAT required)
-- [ ] Caching layer to avoid re-reviewing unchanged files
+- [x] Caching layer to avoid re-reviewing unchanged files
 
 ---
 

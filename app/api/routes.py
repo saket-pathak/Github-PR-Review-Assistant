@@ -33,6 +33,23 @@ async def review_pr(payload: ReviewRequest):
                 comments_posted=0,
                 summary=f"GitLab Review service error or not implemented: {e}"
             )
+    elif payload.platform == "bitbucket":
+        try:
+            from app.services.bitbucket_review_service import run_bitbucket_review
+            result = await run_bitbucket_review(payload.repo, payload.pr_number, post_to_bitbucket=True)
+            return ReviewResponse(
+                status=result.get("status", "success"),
+                pr=payload.pr_number,
+                comments_posted=result.get("comments_posted", 0),
+                summary=result.get("summary", "")
+            )
+        except (ImportError, AttributeError) as e:
+            return ReviewResponse(
+                status="mocked",
+                pr=payload.pr_number,
+                comments_posted=0,
+                summary=f"Bitbucket Review service error or not implemented: {e}"
+            )
     else:
         try:
             from app.services.review_service import run_review
@@ -58,10 +75,12 @@ async def webhook(
     x_hub_signature_256: str = Header(None),
     x_github_event: str = Header(None, alias="X-GitHub-Event"),
     x_gitlab_event: str = Header(None, alias="X-Gitlab-Event"),
-    x_gitlab_token: str = Header(None, alias="X-Gitlab-Token")
+    x_gitlab_token: str = Header(None, alias="X-Gitlab-Token"),
+    x_event_key: str = Header(None, alias="X-Event-Key"),
+    x_hub_signature: str = Header(None, alias="X-Hub-Signature")
 ):
     """
-    Unified webhook receiver for GitHub and GitLab.
+    Unified webhook receiver for GitHub, GitLab, and Bitbucket.
     """
     payload_bytes = await request.body()
     
@@ -84,6 +103,26 @@ async def webhook(
         from app.services.gitlab_review_service import run_gitlab_review
         background_tasks.add_task(run_gitlab_review, project_path, mr_iid, post_to_gitlab=True)
         return {"status": "triggered", "platform": "gitlab", "repo": project_path, "pr": mr_iid}
+
+    # 1.5. Process Bitbucket webhook if X-Event-Key is present
+    if x_event_key:
+        if settings.bitbucket_webhook_secret:
+            from app.bitbucket.webhook import verify_bitbucket_signature
+            if not verify_bitbucket_signature(payload_bytes, x_hub_signature, settings.bitbucket_webhook_secret):
+                raise HTTPException(status_code=401, detail="Invalid Bitbucket webhook signature")
+                
+        payload = await request.json()
+        from app.bitbucket.webhook import parse_bitbucket_webhook
+        extracted = parse_bitbucket_webhook(payload, x_event_key)
+        
+        if not extracted:
+            return {"status": "ignored", "reason": "Not an eligible pull request event or webhook parser not ready"}
+            
+        repo_slug, pr_id = extracted
+        
+        from app.services.bitbucket_review_service import run_bitbucket_review
+        background_tasks.add_task(run_bitbucket_review, repo_slug, pr_id, post_to_bitbucket=True)
+        return {"status": "triggered", "platform": "bitbucket", "repo": repo_slug, "pr": pr_id}
 
     # 2. Otherwise process as GitHub webhook
     if settings.github_webhook_secret:

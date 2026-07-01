@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     gitlab_webhook_secret: str = ""
     gitlab_api_url: str = "https://gitlab.com/api/v4"
 
+    # Bitbucket configurations
+    bitbucket_username: str = ""
+    bitbucket_token: str = ""
+    bitbucket_webhook_secret: str = ""
+    bitbucket_api_url: str = "https://api.bitbucket.org/2.0"
+
     
     # LLM configurations
     llm_provider: str = "anthropic"  # 'anthropic', 'openai', or 'mock'

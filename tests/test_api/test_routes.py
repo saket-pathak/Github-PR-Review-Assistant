@@ -149,3 +149,79 @@ def test_gitlab_webhook_ignored_event(mock_parse_gitlab_webhook, mock_verify_git
     response = client.post("/webhook", json={}, headers=headers)
     assert response.status_code == 200
     assert response.json()["status"] == "ignored"
+
+
+@patch("app.services.bitbucket_review_service.run_bitbucket_review", new_callable=AsyncMock)
+def test_review_bitbucket_pr_success(mock_run_bitbucket_review):
+    mock_run_bitbucket_review.return_value = {
+        "status": "success",
+        "comments_posted": 4,
+        "summary": "Nice Bitbucket PR!"
+    }
+
+    payload = {"repo": "workspace/repo", "pr_number": 1, "platform": "bitbucket"}
+    response = client.post("/review", json=payload)
+    
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "pr": 1,
+        "comments_posted": 4,
+        "summary": "Nice Bitbucket PR!"
+    }
+    mock_run_bitbucket_review.assert_called_once_with("workspace/repo", 1, post_to_bitbucket=True)
+
+
+@patch("app.bitbucket.webhook.verify_bitbucket_signature")
+@patch("app.bitbucket.webhook.parse_bitbucket_webhook")
+@patch("app.services.bitbucket_review_service.run_bitbucket_review", new_callable=AsyncMock)
+def test_bitbucket_webhook_triggered_success(mock_run_bitbucket_review, mock_parse_bitbucket_webhook, mock_verify_signature):
+    settings.bitbucket_webhook_secret = "bbsecret"
+    mock_verify_signature.return_value = True
+    mock_parse_bitbucket_webhook.return_value = ("workspace/repo", 1)
+
+    headers = {
+        "X-Event-Key": "pullrequest:created",
+        "X-Hub-Signature": "sha256=bbsig"
+    }
+    payload = {"pullrequest": {"id": 1}}
+    response = client.post("/webhook", json=payload, headers=headers)
+    
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "triggered",
+        "platform": "bitbucket",
+        "repo": "workspace/repo",
+        "pr": 1
+    }
+    mock_verify_signature.assert_called_once_with(b'{"pullrequest":{"id":1}}', "sha256=bbsig", "bbsecret")
+    mock_parse_bitbucket_webhook.assert_called_once_with(payload, "pullrequest:created")
+
+
+@patch("app.bitbucket.webhook.verify_bitbucket_signature")
+def test_bitbucket_webhook_signature_failure(mock_verify_signature):
+    settings.bitbucket_webhook_secret = "bbsecret"
+    mock_verify_signature.return_value = False
+
+    headers = {
+        "X-Event-Key": "pullrequest:created",
+        "X-Hub-Signature": "sha256=wrongsig"
+    }
+    response = client.post("/webhook", json={}, headers=headers)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid Bitbucket webhook signature"
+
+
+@patch("app.bitbucket.webhook.verify_bitbucket_signature")
+@patch("app.bitbucket.webhook.parse_bitbucket_webhook")
+def test_bitbucket_webhook_ignored_event(mock_parse_bitbucket_webhook, mock_verify_signature):
+    settings.bitbucket_webhook_secret = ""
+    mock_verify_signature.return_value = True
+    mock_parse_bitbucket_webhook.return_value = None
+
+    headers = {
+        "X-Event-Key": "repo:push"
+    }
+    response = client.post("/webhook", json={}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "ignored"
