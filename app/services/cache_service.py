@@ -17,6 +17,18 @@ class ReviewCache:
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS reviews_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        platform TEXT NOT NULL,
+                        repo TEXT NOT NULL,
+                        pr_number INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        summary TEXT,
+                        comments_posted INTEGER NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
                 conn.commit()
         except Exception:
             # Failsafe if unable to initialize database in read-only or restricted environments
@@ -56,3 +68,60 @@ class ReviewCache:
         except Exception:
             # Ignore caching errors (failsafe design)
             pass
+
+    def add_review_to_history(
+        self,
+        platform: str,
+        repo: str,
+        pr_number: int,
+        status: str,
+        summary: str,
+        comments_posted: int
+    ):
+        """
+        Logs a pull request review execution run.
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO reviews_history (platform, repo, pr_number, status, summary, comments_posted)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (platform, repo, pr_number, status, summary, comments_posted)
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+    def get_reviews_history(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves all pull request reviews logged in history, ordered newest first.
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, platform, repo, pr_number, status, summary, comments_posted, created_at FROM reviews_history ORDER BY id DESC")
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            return []
+
+    def get_review_by_id(self, review_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves a single review history record by ID.
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT id, platform, repo, pr_number, status, summary, comments_posted, created_at FROM reviews_history WHERE id = ?",
+                    (review_id,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return dict(row)
+        except Exception:
+            pass
+        return None

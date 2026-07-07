@@ -225,3 +225,30 @@ def test_bitbucket_webhook_ignored_event(mock_parse_bitbucket_webhook, mock_veri
     response = client.post("/webhook", json={}, headers=headers)
     assert response.status_code == 200
     assert response.json()["status"] == "ignored"
+
+
+@patch("app.services.cache_service.ReviewCache.get_reviews_history")
+def test_get_history(mock_get_history):
+    mock_get_history.return_value = [
+        {"id": 1, "platform": "github", "repo": "owner/repo", "pr_number": 42, "status": "success", "comments_posted": 2}
+    ]
+    response = client.get("/api/history")
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["repo"] == "owner/repo"
+
+
+@patch("app.services.cache_service.ReviewCache.get_review_by_id")
+def test_get_review_details_success(mock_get_by_id):
+    mock_get_by_id.return_value = {"id": 5, "platform": "gitlab", "repo": "gitlab-org/gitlab", "pr_number": 10}
+    response = client.get("/api/history/5")
+    assert response.status_code == 200
+    assert response.json()["repo"] == "gitlab-org/gitlab"
+
+
+@patch("app.services.cache_service.ReviewCache.get_review_by_id")
+def test_get_review_details_not_found(mock_get_by_id):
+    mock_get_by_id.return_value = None
+    response = client.get("/api/history/999")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Review not found in history"

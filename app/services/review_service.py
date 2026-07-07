@@ -109,6 +109,16 @@ async def run_review(repo: str, pr_number: int, post_to_github: bool = True) -> 
         )
         comments_posted = len(all_comments)
 
+    # Log to history
+    cache.add_review_to_history(
+        platform="github",
+        repo=repo,
+        pr_number=pr_number,
+        status="success",
+        summary=summary,
+        comments_posted=comments_posted
+    )
+
     return {
         "status": "success",
         "pr": pr_number,

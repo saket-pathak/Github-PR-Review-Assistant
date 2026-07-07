@@ -119,6 +119,16 @@ async def run_bitbucket_review(repo: str, pr_id: int, post_to_bitbucket: bool = 
                 
         comments_posted = len(all_comments)
 
+    # Log to history
+    cache.add_review_to_history(
+        platform="bitbucket",
+        repo=repo,
+        pr_number=pr_id,
+        status="success",
+        summary=summary,
+        comments_posted=comments_posted
+    )
+
     return {
         "status": "success",
         "pr": pr_id,

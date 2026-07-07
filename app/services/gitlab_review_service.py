@@ -125,6 +125,16 @@ async def run_gitlab_review(project_id: str, mr_iid: int, post_to_gitlab: bool =
                 
         comments_posted = len(all_comments)
 
+    # Log to history
+    cache.add_review_to_history(
+        platform="gitlab",
+        repo=project_id,
+        pr_number=mr_iid,
+        status="success",
+        summary=summary,
+        comments_posted=comments_posted
+    )
+
     return {
         "status": "success",
         "mr": mr_iid,

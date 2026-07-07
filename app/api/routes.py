@@ -153,3 +153,26 @@ async def webhook(
         return {"status": "triggered", "platform": "github", "repo": repo, "pr": pr_number}
     except (ImportError, AttributeError):
         return {"status": "received", "repo": repo, "pr": pr_number, "note": "Review service not yet implemented"}
+
+
+@router.get("/api/history")
+async def get_history():
+    """
+    Get the list of logged PR/MR reviews.
+    """
+    from app.services.cache_service import ReviewCache
+    cache = ReviewCache()
+    return cache.get_reviews_history()
+
+
+@router.get("/api/history/{review_id}")
+async def get_review_details(review_id: int):
+    """
+    Get details of a single review run.
+    """
+    from app.services.cache_service import ReviewCache
+    cache = ReviewCache()
+    review = cache.get_review_by_id(review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found in history")
+    return review
